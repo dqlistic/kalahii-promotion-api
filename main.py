@@ -4,7 +4,7 @@
 from flask import Flask, request, jsonify
 import os
 import requests
-import time
+import time # <--- NEW: Import time module
 
 app = Flask(__name__)
 
@@ -25,10 +25,18 @@ def send_webhook(data, webhook_type="general"):
         response = requests.post(WEBHOOK_URL, json=data)
         response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
         print(f"[{webhook_type}] Webhook sent successfully. Status: {response.status_code}")
-        # Optionally, print response content if you want to debug further
-        # print(f"[{webhook_type}] Webhook response: {response.text}")
+        # print(f"[{webhook_type}] Webhook response: {response.text}") # Uncomment for very detailed debugging
+
+        # --- NEW: Introduce a small delay to respect Discord's rate limits ---
+        time.sleep(1) # Wait for 1 second after sending each webhook
+
     except requests.exceptions.HTTPError as e:
-        print(f"[{webhook_type}] HTTP Error sending webhook: {e.response.status_code} - {e.response.text}")
+        # Discord rate limits often return 429. Handle it gracefully.
+        if e.response.status_code == 429:
+            retry_after = e.response.headers.get('Retry-After')
+            print(f"[{webhook_type}] HTTP Error sending webhook: Rate Limited (429). Retry-After: {retry_after} seconds. Please reduce webhook frequency.")
+        else:
+            print(f"[{webhook_type}] HTTP Error sending webhook: {e.response.status_code} - {e.response.text}")
     except requests.exceptions.RequestException as e:
         print(f"[{webhook_type}] Network Error sending webhook: {e}")
     except Exception as e:
@@ -169,7 +177,7 @@ def promote_user():
     except requests.exceptions.RequestException as e:
         reason = f"Network Error trying to reach Roblox API: {str(e)}"
         if source == 'COMMAND':
-            send_command_failure_webhook(username, user_id, current_rank_name, points, reason)
+                send_command_failure_webhook(username, user_id, current_rank_name, points, reason)
         else:
             send_failure_webhook(username, user_id, current_rank_name, new_rank_name, points, reason)
         return jsonify({"success": False, "error": reason}), 500
