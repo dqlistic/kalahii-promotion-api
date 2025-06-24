@@ -15,6 +15,26 @@ GROUP_ID = 35942189
 
 # --- WEBHOOK FUNCTIONS ---
 
+def send_webhook(data, webhook_type="general"):
+    """Centralized function to send webhooks and log responses/errors."""
+    if not WEBHOOK_URL:
+        print(f"[{webhook_type}] ERROR: DISCORD_WEBHOOK_URL is not set.")
+        return
+
+    try:
+        response = requests.post(WEBHOOK_URL, json=data)
+        response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
+        print(f"[{webhook_type}] Webhook sent successfully. Status: {response.status_code}")
+        # Optionally, print response content if you want to debug further
+        # print(f"[{webhook_type}] Webhook response: {response.text}")
+    except requests.exceptions.HTTPError as e:
+        print(f"[{webhook_type}] HTTP Error sending webhook: {e.response.status_code} - {e.response.text}")
+    except requests.exceptions.RequestException as e:
+        print(f"[{webhook_type}] Network Error sending webhook: {e}")
+    except Exception as e:
+        print(f"[{webhook_type}] Unexpected Error sending webhook: {e}")
+
+
 def send_success_webhook(username, user_id, old_rank_name, new_rank_name, points):
     """Sends a green-tagged embed for a successful promotion."""
     data = {
@@ -30,7 +50,7 @@ def send_success_webhook(username, user_id, old_rank_name, new_rank_name, points
             ]
         }]
     }
-    requests.post(WEBHOOK_URL, json=data)
+    send_webhook(data, "success") # Call the new centralized function
 
 def send_failure_webhook(username, user_id, current_rank_name, supposed_rank_name, points, reason):
     """Sends a red-tagged embed for a system failure during an automatic promotion."""
@@ -49,7 +69,7 @@ def send_failure_webhook(username, user_id, current_rank_name, supposed_rank_nam
             ]
         }]
     }
-    requests.post(WEBHOOK_URL, json=data)
+    send_webhook(data, "failure") # Call the new centralized function
 
 def send_command_failure_webhook(username, user_id, current_rank_name, points, reason):
     """Sends a yellow-tagged embed for a command-triggered failure where the user was eligible."""
@@ -67,7 +87,7 @@ def send_command_failure_webhook(username, user_id, current_rank_name, points, r
             ]
         }]
     }
-    requests.post(WEBHOOK_URL, json=data)
+    send_webhook(data, "command_failure") # Call the new centralized function
 
 
 # --- CORE LOGIC ---
@@ -100,7 +120,7 @@ def parse_roblox_error(response):
             if "userFacingMessage" in error_info and error_info["userFacingMessage"]:
                 return error_info["userFacingMessage"]
             elif "message" in error_info and error_info["message"]:
-                 return error_info["message"]
+                return error_info["message"]
     except (ValueError, KeyError):
         pass
     return f"Roblox API Error {response.status_code}: {response.text}"
@@ -149,9 +169,9 @@ def promote_user():
     except requests.exceptions.RequestException as e:
         reason = f"Network Error trying to reach Roblox API: {str(e)}"
         if source == 'COMMAND':
-             send_command_failure_webhook(username, user_id, current_rank_name, points, reason)
+            send_command_failure_webhook(username, user_id, current_rank_name, points, reason)
         else:
-             send_failure_webhook(username, user_id, current_rank_name, new_rank_name, points, reason)
+            send_failure_webhook(username, user_id, current_rank_name, new_rank_name, points, reason)
         return jsonify({"success": False, "error": reason}), 500
 
 @app.route('/')
@@ -159,5 +179,6 @@ def home():
     return "Kalahii Promotion API is running."
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
-
+    # IMPORTANT: Do not run app.run() in production on Render.
+    # Gunicorn handles the serving. This is only for local testing.
+    app.run(host='0.0.0.0', port=os.environ.get('PORT', 8080)) # Use PORT env var for local dev, if set
