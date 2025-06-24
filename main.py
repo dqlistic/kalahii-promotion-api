@@ -4,7 +4,7 @@
 from flask import Flask, request, jsonify
 import os
 import requests
-import time # <--- NEW: Import time module
+# Removed: import time (since time.sleep is removed)
 
 app = Flask(__name__)
 
@@ -15,32 +15,27 @@ GROUP_ID = 35942189
 
 # --- WEBHOOK FUNCTIONS ---
 
-def send_webhook(data, webhook_type="general"):
-    """Centralized function to send webhooks and log responses/errors."""
+def send_webhook(data):
+    """Centralized function to send webhooks. Errors are caught but not loudly printed."""
     if not WEBHOOK_URL:
-        print(f"[{webhook_type}] ERROR: DISCORD_WEBHOOK_URL is not set.")
+        # Log this internally if proper logging is set up, otherwise just ignore for "formal"
         return
 
     try:
         response = requests.post(WEBHOOK_URL, json=data)
         response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
-        print(f"[{webhook_type}] Webhook sent successfully. Status: {response.status_code}")
-        # print(f"[{webhook_type}] Webhook response: {response.text}") # Uncomment for very detailed debugging
-
-        # --- NEW: Introduce a small delay to respect Discord's rate limits ---
-        time.sleep(1) # Wait for 1 second after sending each webhook
+        # Removed: print statements for successful webhook sends
 
     except requests.exceptions.HTTPError as e:
-        # Discord rate limits often return 429. Handle it gracefully.
-        if e.response.status_code == 429:
-            retry_after = e.response.headers.get('Retry-After')
-            print(f"[{webhook_type}] HTTP Error sending webhook: Rate Limited (429). Retry-After: {retry_after} seconds. Please reduce webhook frequency.")
-        else:
-            print(f"[{webhook_type}] HTTP Error sending webhook: {e.response.status_code} - {e.response.text}")
+        # Errors are caught, but not printed unless you add logging here.
+        # e.g., app.logger.error(f"HTTP Error sending webhook: {e.response.status_code} - {e.response.text}")
+        pass # Simply suppress the error if you don't want to log it
     except requests.exceptions.RequestException as e:
-        print(f"[{webhook_type}] Network Error sending webhook: {e}")
+        # e.g., app.logger.error(f"Network Error sending webhook: {e}")
+        pass
     except Exception as e:
-        print(f"[{webhook_type}] Unexpected Error sending webhook: {e}")
+        # e.g., app.logger.error(f"Unexpected Error sending webhook: {e}")
+        pass
 
 
 def send_success_webhook(username, user_id, old_rank_name, new_rank_name, points):
@@ -58,7 +53,7 @@ def send_success_webhook(username, user_id, old_rank_name, new_rank_name, points
             ]
         }]
     }
-    send_webhook(data, "success") # Call the new centralized function
+    send_webhook(data) # Call the centralized function
 
 def send_failure_webhook(username, user_id, current_rank_name, supposed_rank_name, points, reason):
     """Sends a red-tagged embed for a system failure during an automatic promotion."""
@@ -77,7 +72,7 @@ def send_failure_webhook(username, user_id, current_rank_name, supposed_rank_nam
             ]
         }]
     }
-    send_webhook(data, "failure") # Call the new centralized function
+    send_webhook(data) # Call the centralized function
 
 def send_command_failure_webhook(username, user_id, current_rank_name, points, reason):
     """Sends a yellow-tagged embed for a command-triggered failure where the user was eligible."""
@@ -95,7 +90,7 @@ def send_command_failure_webhook(username, user_id, current_rank_name, points, r
             ]
         }]
     }
-    send_webhook(data, "command_failure") # Call the new centralized function
+    send_webhook(data) # Call the centralized function
 
 
 # --- CORE LOGIC ---
@@ -116,7 +111,7 @@ def get_csrf_token():
             return csrf_token
         return None
     except requests.exceptions.RequestException as e:
-        print(f"Error getting CSRF token: {e}")
+        print(f"Error getting CSRF token: {e}") # This print is for critical internal errors
         return None
 
 def parse_roblox_error(response):
