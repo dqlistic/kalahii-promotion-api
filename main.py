@@ -4,7 +4,7 @@
 from flask import Flask, request, jsonify
 import os
 import requests
-# Removed: import time (since time.sleep is removed)
+import time # <--- THIS LINE IS CRUCIAL AND WAS MISSING IN THE LAST VERSION
 
 app = Flask(__name__)
 
@@ -18,23 +18,17 @@ GROUP_ID = 35942189
 def send_webhook(data):
     """Centralized function to send webhooks. Errors are caught but not loudly printed."""
     if not WEBHOOK_URL:
-        # Log this internally if proper logging is set up, otherwise just ignore for "formal"
         return
 
     try:
         response = requests.post(WEBHOOK_URL, json=data)
         response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
-        # Removed: print statements for successful webhook sends
 
     except requests.exceptions.HTTPError as e:
-        # Errors are caught, but not printed unless you add logging here.
-        # e.g., app.logger.error(f"HTTP Error sending webhook: {e.response.status_code} - {e.response.text}")
-        pass # Simply suppress the error if you don't want to log it
+        pass # Suppress error logging for "formal" version
     except requests.exceptions.RequestException as e:
-        # e.g., app.logger.error(f"Network Error sending webhook: {e}")
         pass
     except Exception as e:
-        # e.g., app.logger.error(f"Unexpected Error sending webhook: {e}")
         pass
 
 
@@ -101,6 +95,7 @@ csrf_last_fetched = 0
 
 def get_csrf_token():
     global csrf_token, csrf_last_fetched
+    # THIS LINE NEEDS 'time'
     if time.time() - csrf_last_fetched < 300 and csrf_token:
         return csrf_token
     try:
