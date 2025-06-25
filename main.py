@@ -4,7 +4,7 @@
 from flask import Flask, request, jsonify
 import os
 import requests
-import time # This is needed for time.time() in get_csrf_token()
+import time # <--- THIS LINE IS CRUCIAL AND WAS MISSING IN THE LAST VERSION
 
 app = Flask(__name__)
 
@@ -15,28 +15,21 @@ GROUP_ID = 35942189
 
 # --- WEBHOOK FUNCTIONS ---
 
-def send_webhook(data, webhook_type="general"):
-    """Centralized function to send webhooks and log responses/errors."""
+def send_webhook(data):
+    """Centralized function to send webhooks. Errors are caught but not loudly printed."""
     if not WEBHOOK_URL:
-        print(f"[{webhook_type}] ERROR: DISCORD_WEBHOOK_URL is not set.")
         return
 
     try:
         response = requests.post(WEBHOOK_URL, json=data)
         response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
-        print(f"[{webhook_type}] Webhook sent successfully. Status: {response.status_code}")
-        # Uncomment the line below for extremely detailed Discord response debugging if needed:
-        # print(f"[{webhook_type}] Webhook raw response: {response.text}")
 
     except requests.exceptions.HTTPError as e:
-        # This will tell us the HTTP error code and message from Discord (e.g., 429 Rate Limit)
-        print(f"[{webhook_type}] HTTP Error sending webhook: {e.response.status_code} - {e.response.text}")
+        pass # Suppress error logging for "formal" version
     except requests.exceptions.RequestException as e:
-        # This will catch network-related errors (e.g., can't connect to Discord)
-        print(f"[{webhook_type}] Network Error sending webhook: {e}")
+        pass
     except Exception as e:
-        # Catch any other unexpected errors during webhook sending
-        print(f"[{webhook_type}] Unexpected Error sending webhook: {e}")
+        pass
 
 
 def send_success_webhook(username, user_id, old_rank_name, new_rank_name, points):
@@ -54,7 +47,7 @@ def send_success_webhook(username, user_id, old_rank_name, new_rank_name, points
             ]
         }]
     }
-    send_webhook(data, "success") # Call the centralized function
+    send_webhook(data) # Call the centralized function
 
 def send_failure_webhook(username, user_id, current_rank_name, supposed_rank_name, points, reason):
     """Sends a red-tagged embed for a system failure during an automatic promotion."""
@@ -73,7 +66,7 @@ def send_failure_webhook(username, user_id, current_rank_name, supposed_rank_nam
             ]
         }]
     }
-    send_webhook(data, "failure") # Call the centralized function
+    send_webhook(data) # Call the centralized function
 
 def send_command_failure_webhook(username, user_id, current_rank_name, points, reason):
     """Sends a yellow-tagged embed for a command-triggered failure where the user was eligible."""
@@ -91,7 +84,7 @@ def send_command_failure_webhook(username, user_id, current_rank_name, points, r
             ]
         }]
     }
-    send_webhook(data, "command_failure") # Call the centralized function
+    send_webhook(data) # Call the centralized function
 
 
 # --- CORE LOGIC ---
@@ -102,6 +95,7 @@ csrf_last_fetched = 0
 
 def get_csrf_token():
     global csrf_token, csrf_last_fetched
+    # THIS LINE NEEDS 'time'
     if time.time() - csrf_last_fetched < 300 and csrf_token:
         return csrf_token
     try:
