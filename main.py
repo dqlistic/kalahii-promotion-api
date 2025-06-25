@@ -1,90 +1,23 @@
 # main.py - Kalahii Promotion System (Final Version)
-# Uses cookie-based authentication and handles all webhook logic.
+# This version only handles Roblox group promotion. Discord webhooks are handled by Roblox script.
 
 from flask import Flask, request, jsonify
 import os
 import requests
-import time # <--- THIS LINE IS CRUCIAL AND WAS MISSING IN THE LAST VERSION
+import time
 
 app = Flask(__name__)
 
 # --- CONFIGURATION ---
 ROBLOX_COOKIE = os.environ.get('ROBLOX_COOKIE')
-WEBHOOK_URL = os.environ.get('DISCORD_WEBHOOK_URL')
+# Removed: WEBHOOK_URL (since Discord webhooks are handled by Roblox script)
 GROUP_ID = 35942189
 
-# --- WEBHOOK FUNCTIONS ---
-
-def send_webhook(data):
-    """Centralized function to send webhooks. Errors are caught but not loudly printed."""
-    if not WEBHOOK_URL:
-        return
-
-    try:
-        response = requests.post(WEBHOOK_URL, json=data)
-        response.raise_for_status() # Raises an HTTPError for bad responses (4xx or 5xx)
-
-    except requests.exceptions.HTTPError as e:
-        pass # Suppress error logging for "formal" version
-    except requests.exceptions.RequestException as e:
-        pass
-    except Exception as e:
-        pass
-
-
-def send_success_webhook(username, user_id, old_rank_name, new_rank_name, points):
-    """Sends a green-tagged embed for a successful promotion."""
-    data = {
-        "embeds": [{
-            "title": "Promotion Successful",
-            "color": 3066993,  # Green
-            "fields": [
-                {"name": "Username", "value": str(username), "inline": True},
-                {"name": "User ID", "value": str(user_id), "inline": True},
-                {"name": "Points", "value": str(points), "inline": False},
-                {"name": "Previous Rank", "value": str(old_rank_name), "inline": True},
-                {"name": "New Rank", "value": str(new_rank_name), "inline": True}
-            ]
-        }]
-    }
-    send_webhook(data) # Call the centralized function
-
-def send_failure_webhook(username, user_id, current_rank_name, supposed_rank_name, points, reason):
-    """Sends a red-tagged embed for a system failure during an automatic promotion."""
-    data = {
-        "embeds": [{
-            "title": "Promotion System Failure",
-            "color": 15158332,  # Red
-            "description": "The system failed to promote a user who met the requirements.",
-            "fields": [
-                {"name": "Username", "value": str(username), "inline": True},
-                {"name": "User ID", "value": str(user_id), "inline": True},
-                {"name": "Points", "value": str(points), "inline": False},
-                {"name": "Current Rank", "value": str(current_rank_name), "inline": True},
-                {"name": "Supposed Rank", "value": str(supposed_rank_name), "inline": True},
-                {"name": "Reason for Failure", "value": f"```{reason}```", "inline": False}
-            ]
-        }]
-    }
-    send_webhook(data) # Call the centralized function
-
-def send_command_failure_webhook(username, user_id, current_rank_name, points, reason):
-    """Sends a yellow-tagged embed for a command-triggered failure where the user was eligible."""
-    data = {
-        "embeds": [{
-            "title": "Command Promotion Failure",
-            "color": 16705372,  # Yellow
-            "description": "A promotion initiated by the `!rank` command failed.",
-            "fields": [
-                {"name": "Username", "value": str(username), "inline": True},
-                {"name": "User ID", "value": str(user_id), "inline": True},
-                {"name": "Points", "value": str(points), "inline": False},
-                {"name": "Current Rank", "value": str(current_rank_name), "inline": True},
-                {"name": "Reason", "value": f"```{reason}```", "inline": False}
-            ]
-        }]
-    }
-    send_webhook(data) # Call the centralized function
+# --- WEBHOOK FUNCTIONS (All removed as Roblox handles them) ---
+# Removed: send_webhook function
+# Removed: send_success_webhook function
+# Removed: send_failure_webhook function
+# Removed: send_command_failure_webhook function
 
 
 # --- CORE LOGIC ---
@@ -95,7 +28,6 @@ csrf_last_fetched = 0
 
 def get_csrf_token():
     global csrf_token, csrf_last_fetched
-    # THIS LINE NEEDS 'time'
     if time.time() - csrf_last_fetched < 300 and csrf_token:
         return csrf_token
     try:
@@ -106,7 +38,7 @@ def get_csrf_token():
             return csrf_token
         return None
     except requests.exceptions.RequestException as e:
-        print(f"Error getting CSRF token: {e}") # This print is for critical internal errors
+        print(f"Error getting CSRF token: {e}") # Keep this for critical internal errors
         return None
 
 def parse_roblox_error(response):
@@ -129,21 +61,17 @@ def promote_user():
     data = request.json
     if not data: return jsonify({"success": False, "error": "No data provided"}), 400
 
-    # Extract all necessary info
+    # Extract only necessary info for Roblox promotion
+    # Removed: username, points, currentRankName, newRankName from extraction as API no longer uses for webhooks
     user_id = data.get('userId'); new_role_id = data.get('newRoleId'); source = data.get('source', 'AUTOMATIC')
-    username = data.get('username'); points = data.get('points'); current_rank_name = data.get('currentRankName'); new_rank_name = data.get('newRankName')
 
-    if not all([user_id, new_role_id, username, points, current_rank_name, new_rank_name]):
-        return jsonify({"success": False, "error": "Missing required fields"}), 400
+    if not all([user_id, new_role_id]): # Only userId and newRoleId are strictly needed now
+        return jsonify({"success": False, "error": "Missing required fields (userId, newRoleId)"}), 400
 
     token = get_csrf_token()
     if not token:
         reason = "Failed to get CSRF token. The ranking bot's cookie is likely invalid or expired."
-        # This is a critical system error, so we log it for both sources
-        if source == 'COMMAND':
-            send_command_failure_webhook(username, user_id, current_rank_name, points, reason)
-        else:
-            send_failure_webhook(username, user_id, current_rank_name, new_rank_name, points, reason)
+        # No webhook call from here; Roblox script will handle it
         return jsonify({"success": False, "error": reason}), 500
 
     url = f"https://groups.roblox.com/v1/groups/{GROUP_ID}/users/{user_id}"
@@ -154,22 +82,16 @@ def promote_user():
         response = session.patch(url, headers=headers, json=payload)
 
         if response.status_code == 200:
-            send_success_webhook(username, user_id, current_rank_name, new_rank_name, points)
+            # Removed: send_success_webhook call
             return jsonify({"success": True, "message": "Promotion successful"}), 200
         else:
             reason = parse_roblox_error(response)
-            if source == 'COMMAND':
-                send_command_failure_webhook(username, user_id, current_rank_name, points, reason)
-            else:
-                send_failure_webhook(username, user_id, current_rank_name, new_rank_name, points, reason)
+            # Removed: send_failure_webhook / send_command_failure_webhook calls
             return jsonify({"success": False, "error": reason}), response.status_code
 
     except requests.exceptions.RequestException as e:
         reason = f"Network Error trying to reach Roblox API: {str(e)}"
-        if source == 'COMMAND':
-                send_command_failure_webhook(username, user_id, current_rank_name, points, reason)
-        else:
-            send_failure_webhook(username, user_id, current_rank_name, new_rank_name, points, reason)
+        # Removed: send_failure_webhook / send_command_failure_webhook calls
         return jsonify({"success": False, "error": reason}), 500
 
 @app.route('/')
